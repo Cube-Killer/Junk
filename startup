@@ -1,0 +1,172 @@
+os.pullEvent = os.pullEventRaw
+print("Lux OS Booting!")
+modem = peripheral.wrap("right")
+hopper = peripheral.wrap("left")
+Disp = peripheral.wrap("bottom")
+CashItem = "Emerald" --The inventory name
+CashName = "minecraft:emerald"
+ServerAdress = 4 --IMPORTANT: MUST BE CORRECT!
+
+if Disp.getItemDetail(1,2,3,4,5,6,7,8,9).count <= 9 then
+    print("TERMINAL OUT OF SERVICE! PLEASE CONTACT CORRESPONDING BANK AUTHORITIES! [LOW]")
+    sleep(10)
+   os.reboot()
+end
+function ALERT(T)
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.red)
+    term.setCursorPos(1,1)
+    print(T)
+    sleep(5)
+    os.reboot()
+end
+function COMS(adress,command,clientID)
+    term.clear()
+    term.setCursorPos(1,1)
+    if command == "Deposit" then
+        if Disp.getItemDetail(9).count == Disp.getItemLimit(9) then
+            print("Failed to allocate inventory")
+        else
+        print("Please insert 10 "..CashItem)
+        while true do
+            if hopper.getItemDetail(1) == nil then
+                sleep(2)
+            elseif hopper.getItemDetail(1).name == CashName and hopper.getItemDetail(1).count == 10 then
+                hopper.pushItems("bottom",1)
+                sleep(0.5)
+                print("Wait...")
+                break
+            end
+            end
+        end
+    end
+    --Commands: Withdraw, Deposit, Balance
+    print("Contacting server!")
+    rednet.open("right")
+    rednet.send(adress,"proof?")
+    while true do
+        RIX,MSG = rednet.receive(10)
+        if RIX == adress or MSG == nil or MSG == "FAIL" then
+            break
+        end
+    end
+    print("Verified Server")
+    if MSG == nil or MSG == "FAIL" then
+        ALERT("Failed to communicate with server!")
+    elseif string.upper(MSG) == string.upper(adress) then
+        rednet.send(RIX,command)
+        RXID,MSG = rednet.receive(10)
+        if RXID == RIX and MSG == "Client?" then
+            print("Protocall OK")
+            sleep(0.2)
+            rednet.send(adress,clientID)
+            while true do
+                RXID, MSG = rednet.receive(10)
+                if RXID == adress then
+                    print("DONE!")
+                    sleep(0.2)
+                    if command == "Withdraw" then
+                        if MSG == "ok" then
+                            print("Dispensing...")
+                            rs.setOutput("bottom",false)
+                            for i=1,10 do
+                                print(i.."/10")
+                                rs.setOutput("bottom",true)
+                                sleep(0.1)
+                                rs.setOutput("bottom",false)
+                                sleep(0.1)
+                            end
+                            sleep(5)
+                            ALERT("TRANSACTION COMPLETED!")
+                        else
+                            ALERT("TRANSACTION COMPLETED!")
+                        end
+                    elseif command == "Deposit" then
+                        if MSG == "ok" then
+                            ALERT("TRANSACTION COMPLETED!")
+                        else
+                            ALERT("ERROR",MSG)
+                        end
+                    elseif command == "Bal" then
+                        ALERT(MSG)
+                    end
+                elseif MSG == nil then
+                    ALERT("Failed to hold communication with server")
+                end
+            end
+        elseif MSG == nil then
+            ALERT("Lost communication with server!")
+        else
+            ALERT("Faild to verify server! [stage 2]")
+        end
+    else
+        ALERT("Failed to verify server!")
+    end
+end
+nOp = 1
+while true do
+term.clear()
+term.setCursorPos(1,1)
+print("Lux BANK ATM")
+print("")
+print("Version 2.0")
+print("")
+print("ATTENTION!")
+print("TESTING MODE")
+print("")
+print(os.date())
+print("")
+if nOp == 1 then
+    print("WITHDRAW     <<")
+    print("Deposit        ")
+    print("See balance    ")
+elseif nOp == 2 then
+    print("Withdraw       ")
+    print("DEPOSIT      <<")
+    print("See balance    ")
+elseif nOp == 3 then
+    print("Withdraw       ")
+    print("Deposit        ")
+    print("SEE BALANCE  <<")
+end
+E,K = os.pullEvent("key")
+if K == keys.up then
+    if nOp == 1 then
+        nOp = 2
+    else
+        nOp = nOp - 1
+    end
+elseif K == keys.down then
+    if nOp == 3 then
+        nOp = 1
+    else
+        nOp = nOp + 1
+    end
+elseif K == keys.enter then
+    print("Please enter your username")
+    USRN = read()
+    print("Please enter your PIN")
+    UPIN = read("*")
+    term.setBackgroundColor(colors.lightGray)
+    term.clear()
+    term.setCursorPos(1,1)
+    print("WELCOME",USRN)
+    print("Please wait..")
+    sleep(0.5)
+    print("Starting communications with server!")
+    if nOp == 1 then
+        COMS(ServerAdress,"Withdraw",USRN..UPIN)
+    elseif nOp == 2 then
+        COMS(ServerAdress,"Deposit",USRN..UPIN)
+    else
+        COMS(ServerAdress,"Bal",USRN..UPIN)
+    end
+    break
+end
+end
+term.clear()
+term.setBackgroundColor(colors.black)
+term.setCursorPos(1,1)
+textutils.slowPrint("Thank you for using ATM!")
+sleep(0.1)
+os.reboot()
