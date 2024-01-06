@@ -1,0 +1,7 @@
+shell.run("pastebin get gat4Swdr exampleClient")
+shell.run("pastebin get DGuhk3sz startup")
+if fs.exists("exampleClient") then
+	print("SUCSESS")
+else
+	print("Please make a file called exampleClient and include a 0 on the first row, make sure that the filename does NOT end in .lua")
+end
