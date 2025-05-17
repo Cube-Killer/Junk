@@ -1,172 +1,163 @@
 os.pullEvent = os.pullEventRaw
-print("Lux OS Booting!")
-modem = peripheral.wrap("right")
-hopper = peripheral.wrap("left")
-Disp = peripheral.wrap("bottom")
-CashItem = "Emerald" --The inventory name
-CashName = "minecraft:emerald"
-ServerAdress = 4 --IMPORTANT: MUST BE CORRECT!
+term.setBackgroundColor(colors.gray)
+term.clear()
+term.setCursorPos(1,1)
 
-if Disp.getItemDetail(1,2,3,4,5,6,7,8,9).count <= 9 then
-    print("TERMINAL OUT OF SERVICE! PLEASE CONTACT CORRESPONDING BANK AUTHORITIES! [LOW]")
-    sleep(10)
-   os.reboot()
+print("Lux OS Booting...")
+
+-- === Настройка ===
+local modem = peripheral.wrap("top")
+local hopper = peripheral.wrap("left")
+local disp = peripheral.wrap("bottom")
+
+local CASH_NAME = "minecraft:emerald"
+local CASH_LABEL = "Emerald"
+local SERVER_ID = 0
+
+-- === Проверка наличия предметов в диспансере ===
+local function checkDispenserStock()
+    local total = 0
+    for i = 1, 9 do
+        local item = disp.getItemDetail(i)
+        if item then total = total + item.count end
+    end
+    if total <= 9 then
+        print("TERMINAL OUT OF SERVICE! CONTACT BANK AUTHORITIES. [LOW]")
+        sleep(10)
+        os.reboot()
+    end
 end
-function ALERT(T)
-    term.setBackgroundColor(colors.black)
+
+-- === Функция экстренного сообщения и перезагрузки ===
+local function alert(msg)
+    term.setBackgroundColor(colors.gray)
     term.setTextColor(colors.red)
+    term.clear()
     term.setCursorPos(1,1)
-    print(T)
+    print(msg)
     sleep(5)
     os.reboot()
 end
-function COMS(adress,command,clientID)
+
+-- === Общение с сервером ===
+local function communicate(serverID, command, clientID)
     term.clear()
     term.setCursorPos(1,1)
+
     if command == "Deposit" then
-        if Disp.getItemDetail(9).count == Disp.getItemLimit(9) then
-            print("Failed to allocate inventory")
-        else
-        print("Please insert 10 "..CashItem)
-        while true do
-            if hopper.getItemDetail(1) == nil then
-                sleep(2)
-            elseif hopper.getItemDetail(1).name == CashName and hopper.getItemDetail(1).count == 10 then
-                hopper.pushItems("bottom",1)
-                sleep(0.5)
-                print("Wait...")
-                break
-            end
-            end
-        end
+        local item = hopper.getItemDetail(1)
+        print("Insert 10 " .. CASH_LABEL .. " into hopper")
+        repeat
+            sleep(1)
+            item = hopper.getItemDetail(1)
+        until item and item.name == CASH_NAME and item.count == 10
+        hopper.pushItems("bottom", 1)
+        sleep(0.5)
     end
-    --Commands: Withdraw, Deposit, Balance
-    print("Contacting server!")
-    rednet.open("right")
-    rednet.send(adress,"proof?")
-    while true do
-        RIX,MSG = rednet.receive(10)
-        if RIX == adress or MSG == nil or MSG == "FAIL" then
-            break
-        end
+
+    print("Contacting server...")
+    rednet.open("top")
+    rednet.send(serverID, "proof?")
+
+    local id, msg = rednet.receive(5)
+    if id ~= serverID or tostring(msg) ~= tostring(serverID) then
+        alert("Failed to verify server! [Stage 1]")
     end
-    print("Verified Server")
-    if MSG == nil or MSG == "FAIL" then
-        ALERT("Failed to communicate with server!")
-    elseif string.upper(MSG) == string.upper(adress) then
-        rednet.send(RIX,command)
-        RXID,MSG = rednet.receive(10)
-        if RXID == RIX and MSG == "Client?" then
-            print("Protocall OK")
-            sleep(0.2)
-            rednet.send(adress,clientID)
-            while true do
-                RXID, MSG = rednet.receive(10)
-                if RXID == adress then
-                    print("DONE!")
-                    sleep(0.2)
-                    if command == "Withdraw" then
-                        if MSG == "ok" then
-                            print("Dispensing...")
-                            rs.setOutput("bottom",false)
-                            for i=1,10 do
-                                print(i.."/10")
-                                rs.setOutput("bottom",true)
-                                sleep(0.1)
-                                rs.setOutput("bottom",false)
-                                sleep(0.1)
-                            end
-                            sleep(5)
-                            ALERT("TRANSACTION COMPLETED!")
-                        else
-                            ALERT("TRANSACTION COMPLETED!")
-                        end
-                    elseif command == "Deposit" then
-                        if MSG == "ok" then
-                            ALERT("TRANSACTION COMPLETED!")
-                        else
-                            ALERT("ERROR",MSG)
-                        end
-                    elseif command == "Bal" then
-                        ALERT(MSG)
-                    end
-                elseif MSG == nil then
-                    ALERT("Failed to hold communication with server")
-                end
+
+    print("Verified server ID.")
+    rednet.send(serverID, command)
+
+    local id2, msg2 = rednet.receive(5)
+    if id2 ~= serverID or msg2 ~= "Client?" then
+        alert("Protocol mismatch or server error [Stage 2]")
+    end
+
+    print("Sending client ID...")
+    rednet.send(serverID, clientID)
+
+    local id3, result = rednet.receive(10)
+    if id3 ~= serverID or not result then
+        alert("Lost connection with server [Stage 3]")
+    end
+
+    if command == "Withdraw" then
+        if result == "ok" then
+            print("Dispensing...")
+            for i = 1, 11 do
+                rs.setOutput("bottom", true)
+                sleep(0.1)
+                rs.setOutput("bottom", false)
+                sleep(0.1)
             end
-        elseif MSG == nil then
-            ALERT("Lost communication with server!")
+            alert("TRANSACTION COMPLETED!")
         else
-            ALERT("Faild to verify server! [stage 2]")
+            alert("Withdraw denied.")
         end
+    elseif command == "Deposit" then
+        if result == "ok" then
+            alert("TRANSACTION COMPLETED!")
+        else
+            alert("Deposit failed: " .. result)
+        end
+    elseif command == "Bal" then
+        alert("Your balance: " .. result)
     else
-        ALERT("Failed to verify server!")
+        alert("Unknown server response.")
     end
 end
-nOp = 1
+
+-- === Меню терминала ===
+local options = {"Withdraw", "Deposit", "See balance"}
+local selection = 1
+
+checkDispenserStock()
+
 while true do
-term.clear()
-term.setCursorPos(1,1)
-print("Lux BANK ATM")
-print("")
-print("Version 2.0")
-print("")
-print("ATTENTION!")
-print("TESTING MODE")
-print("")
-print(os.date())
-print("")
-if nOp == 1 then
-    print("WITHDRAW     <<")
-    print("Deposit        ")
-    print("See balance    ")
-elseif nOp == 2 then
-    print("Withdraw       ")
-    print("DEPOSIT      <<")
-    print("See balance    ")
-elseif nOp == 3 then
-    print("Withdraw       ")
-    print("Deposit        ")
-    print("SEE BALANCE  <<")
-end
-E,K = os.pullEvent("key")
-if K == keys.up then
-    if nOp == 1 then
-        nOp = 2
-    else
-        nOp = nOp - 1
-    end
-elseif K == keys.down then
-    if nOp == 3 then
-        nOp = 1
-    else
-        nOp = nOp + 1
-    end
-elseif K == keys.enter then
-    print("Please enter your username")
-    USRN = read()
-    print("Please enter your PIN")
-    UPIN = read("*")
-    term.setBackgroundColor(colors.lightGray)
     term.clear()
     term.setCursorPos(1,1)
-    print("WELCOME",USRN)
-    print("Please wait..")
-    sleep(0.5)
-    print("Starting communications with server!")
-    if nOp == 1 then
-        COMS(ServerAdress,"Withdraw",USRN..UPIN)
-    elseif nOp == 2 then
-        COMS(ServerAdress,"Deposit",USRN..UPIN)
-    else
-        COMS(ServerAdress,"Bal",USRN..UPIN)
+
+    print("Lux BANK ATM")
+    print("Version 2.0")
+    print("TESTING MODE")
+    print(os.date())
+    print("")
+
+    for i = 1, #options do
+        if i == selection then
+            print(options[i]:upper() .. " <<")
+        else
+            print(options[i])
+        end
     end
-    break
+
+    local event, key = os.pullEvent("key")
+    if key == keys.up then
+        selection = selection == 1 and #options or selection - 1
+    elseif key == keys.down then
+        selection = selection == #options and 1 or selection + 1
+    elseif key == keys.enter then
+        term.clear()
+        term.setCursorPos(1,1)
+
+        local username, pin
+        repeat
+            print("Enter your username:")
+            username = read()
+        until username and username ~= ""
+
+        repeat
+            print("Enter your PIN:")
+            pin = read("*")
+        until pin and pin ~= ""
+
+        local clientID = username .. pin
+        communicate(SERVER_ID, options[selection] == "See balance" and "Bal" or options[selection], clientID)
+        break
+    end
 end
-end
+
 term.clear()
-term.setBackgroundColor(colors.black)
 term.setCursorPos(1,1)
 textutils.slowPrint("Thank you for using ATM!")
-sleep(0.1)
+sleep(1)
 os.reboot()
