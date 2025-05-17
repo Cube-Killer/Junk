@@ -1,0 +1,98 @@
+print("Booting LuxBank Server")
+os.sleep(5)
+print("LuxBank Server Started")
+-- === Init ===
+local interfaces = {"right", "top", "left"}
+for _, side in ipairs(interfaces) do
+    if peripheral.getType(side) == "modem" then
+        rednet.open(side)
+    else
+        print("WARNING: No modem on side", side)
+    end
+end
+
+term.clear()
+term.setCursorPos(1, 1)
+
+-- === Queue ===
+local queue = {}
+
+-- === Client ===
+local function handleClient(RXID)
+    rednet.send(RXID, os.getComputerID())
+
+    local CLIENT, CMD = rednet.receive(5)
+    if CLIENT ~= RXID or CMD == nil then
+        rednet.send(RXID, "FAIL")
+        return
+    end
+
+    rednet.send(RXID, "Client?")
+    local ID, userID = rednet.receive(10)
+    if ID ~= RXID or not userID then
+        rednet.send(RXID, "FAIL")
+        return
+    end
+
+    if not fs.exists(userID) then
+        fs.copy("exampleClient", userID)
+        rednet.send(RXID, "RETRY")
+        print("[New client] Created account:", userID)
+        return
+    end
+
+    local h = fs.open(userID, "r")
+    local balance = tonumber(h.readLine())
+    h.close()
+
+    if not balance then
+        rednet.send(RXID, "FAIL")
+        return
+    end
+
+    if CMD == "Withdraw" then
+        if balance >= 10 then
+            balance = balance - 10
+            rednet.send(RXID, "ok")
+        else
+            rednet.send(RXID, "low")
+            return
+        end
+    elseif CMD == "Deposit" then
+        balance = balance + 10
+        rednet.send(RXID, "ok")
+    elseif CMD == "Bal" then
+        rednet.send(RXID, tostring(balance))
+        return
+    else
+        rednet.send(RXID, "FAIL")
+        return
+    end
+
+    local w = fs.open(userID, "w")
+    w.writeLine(balance)
+    w.close()
+    print("[Transaction] " .. CMD .. " by " .. userID .. " -> balance: " .. balance)
+end
+
+-- === main loop ===
+local lastRequest = {}
+while true do
+    local id, msg = rednet.receive()
+
+    if msg == "proof?" then
+        -- ANTI DOS DONT TOUCH!!!!
+        if not lastRequest[id] or os.clock() - lastRequest[id] > 1 then
+            lastRequest[id] = os.clock()
+            table.insert(queue, id)
+            print("[Enqueued] Client ID:", id)
+        else
+            print("[Spam blocked] from ID:", id)
+        end
+    end
+
+    if #queue > 0 then
+        local nextClient = table.remove(queue, 1)
+        handleClient(nextClient)
+    end
+end
